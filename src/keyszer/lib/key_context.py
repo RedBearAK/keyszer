@@ -1,22 +1,19 @@
-# from ..xorg import get_xorg_context
 from ..models.key import Key
 from .window_context import WindowContextProvider
+from .logger import debug, error
+from ..models.key import Key
 
 
 class KeyContext:
     def __init__(self, device, window_context):
         self._X_ctx = None
         self._device = device
-        # self.session_type = session_type
-        # self.wl_desktop_env = wl_desktop_env
 
-        # self._win_ctx_provider = WindowContextProvider(self.session_type, self.wl_desktop_env)
         self._win_ctx_provider: WindowContextProvider = window_context
 
     def _query_window_context(self):
         # cache this,  think it might be expensive
         if self._X_ctx is None:
-            # self._X_ctx = get_xorg_context()
             self._X_ctx = self._win_ctx_provider.get_window_context()
 
     @property
@@ -29,10 +26,11 @@ class KeyContext:
         self._query_window_context()
         return self._X_ctx["wm_name"]
 
+    # generic context error, covering both X11 and Wayland
     @property
-    def x_error(self):
+    def context_error(self):
         self._query_window_context()
-        return self._X_ctx["x_error"]
+        return self._X_ctx["context_error"]
 
     @property
     def device_name(self):

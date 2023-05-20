@@ -1,10 +1,9 @@
-import itertools
+import os
 import re
-import string
 import sys
 import time
-import os
 import inspect
+import itertools
 from inspect import signature
 
 from .lib.logger import error, debug
@@ -101,7 +100,6 @@ THROTTLE_DELAY_DEFAULTS = {
 }
 _THROTTLES = THROTTLE_DELAY_DEFAULTS
 
-
 def clamp(num, min_value, max_value):
     return max(min(num, max_value), min_value)
 
@@ -114,6 +112,7 @@ def throttle_delays(key_pre_delay_ms=0, key_post_delay_ms=0):
                         'key_post_delay_ms': clamp(key_post_delay_ms, ms_min, ms_max) })
     debug(  f'THROTTLES: Pre-key: {_THROTTLES["key_pre_delay_ms"]}ms, '
             f'Post-key: {_THROTTLES["key_post_delay_ms"]}ms')
+
 
 
 # keymaps
@@ -228,30 +227,35 @@ class UnicodeNumberToolarge(Exception):
 
 def to_US_keystrokes(s):
     """
-    Turn alphanumeric string (with spaces and some ASCII) up to length of 100 characters into keystroke commands
+    Turn alphanumeric string (with spaces and some ASCII) up to length 
+    of 100 characters into keystroke commands
 
     Warn: Almost certainly not going to work with non-US keymaps.
     """
     if len(s) > 100:
         raise TypingTooLong("`to_keystrokes` only supports strings of 100 characters or less")
+    def _to_keystrokes(ctx):
+        combo_list = []
+        for c in s:
+            if ord(c) > 127:
+                combo_list.append(unicode_keystrokes(ord(c)))
+            elif c.isupper():
+                if ctx.capslock_on: combo_list.append(combo(c))
+                else: combo_list.append(combo("Shift-" + c))
+            elif (str.isdigit(c)):
+                combo_list.append(Key[c.upper()])
+            elif (str.isalpha(c)):
+                if ctx.capslock_on: combo_list.append(combo("Shift-" + c))
+                else: combo_list.append(Key[c.upper()])
+            elif c in ASCII_TO_KEY:
+                combo_list.append(ASCII_TO_KEY[c])
+            elif c in ASCII_WITH_SHIFT:
+                combo_list.append(ASCII_WITH_SHIFT[c])
+            else:
+                raise CharacterNotSupported(f"The character {c} is not supported by `to_keystrokes` yet.")
+        return combo_list
 
-    combo_list = []
-    for c in s:
-        if ord(c) > 127:
-            combos = unicode_keystrokes(ord(c))
-            combo_list.extend(combos)
-        elif c.isupper():
-            combo_list.append(combo("Shift-" + c))
-        elif (str.isalnum(c)):
-            combo_list.append(Key[c.upper()])
-        elif c in ASCII_TO_KEY:
-            combo_list.append(ASCII_TO_KEY[c])
-        elif c in ASCII_WITH_SHIFT:
-            combo_list.append(ASCII_WITH_SHIFT[c])
-        else:
-            raise CharacterNotSupported(f"The character {c} is not supported by `to_keystrokes` yet.")
-
-    return combo_list
+    return _to_keystrokes
 
 
 def _digits(n, base):
@@ -266,17 +270,21 @@ def unicode_keystrokes(n):
     """Turn Unicode number into keystroke commands"""
     if (n > 0x10ffff):
         raise UnicodeNumberToolarge(f"{hex(n)} too large for Unicode keyboard entry.")
+    def _unicode_keystrokes(ctx):
+        combo_list = [
+            combo("Shift-Ctrl-u"),  # requires "ibus" or "fctix" as input manager?
+            *[Key[hexdigit]
+                for digit in _digits(n, 16)
+                for hexdigit in hex(digit)[2:].upper()
+                ],
+            Key.ENTER,
+        ]
+        if ctx.capslock_on:
+            combo_list.insert(0, Key.CAPSLOCK)
+            combo_list.append(Key.CAPSLOCK)
+        return combo_list
 
-    combo_list = [
-        combo("Shift-Ctrl-u"),
-        *[Key[hexdigit]
-            for digit in _digits(n, 16)
-            for hexdigit in hex(digit)[2:].upper()
-            ],
-        Key.ENTER,
-    ]
-
-    return combo_list
+    return _unicode_keystrokes
 
 
 def combo(exp):  # pylint: disable=invalid-name
@@ -311,27 +319,27 @@ def _create_modifiers_from_strings(modifier_strs):
 
 
 ASCII_WITH_SHIFT = {
-    "~":    combo("Shift-Grave"),
-    "!":    combo("Shift-1"),
-    "@":    combo("Shift-2"),
-    "#":    combo("Shift-3"),
-    "$":    combo("Shift-4"),
-    "%":    combo("Shift-5"),
-    "^":    combo("Shift-6"),
-    "&":    combo("Shift-7"),
-    "*":    combo("Shift-8"),
-    "(":    combo("Shift-9"),
-    ")":    combo("Shift-0"),
-    "_":    combo("Shift-Minus"),
-    "+":    combo("Shift-Equal"),
-    "{":    combo("Shift-Left_Brace"),
-    "}":    combo("Shift-Right_Brace"),
-    "|":    combo("Shift-Backslash"),
-    ":":    combo("Shift-Semicolon"),
-    "\"":   combo("Shift-Apostrophe"),
-    "<":    combo("Shift-Comma"),
-    ">":    combo("Shift-Dot"),
-    "?":    combo("Shift-Slash")
+    '~':    combo("Shift-Grave"),
+    '!':    combo("Shift-1"),
+    '@':    combo("Shift-2"),
+    '#':    combo("Shift-3"),
+    '$':    combo("Shift-4"),
+    '%':    combo("Shift-5"),
+    '^':    combo("Shift-6"),
+    '&':    combo("Shift-7"),
+    '*':    combo("Shift-8"),
+    '(':    combo("Shift-9"),
+    ')':    combo("Shift-0"),
+    '_':    combo("Shift-Minus"),
+    '+':    combo("Shift-Equal"),
+    '{':    combo("Shift-Left_Brace"),
+    '}':    combo("Shift-Right_Brace"),
+    '|':    combo("Shift-Backslash"),
+    ':':    combo("Shift-Semicolon"),
+    '"':    combo("Shift-Apostrophe"),
+    '<':    combo("Shift-Comma"),
+    '>':    combo("Shift-Dot"),
+    '?':    combo("Shift-Slash")
 }
 
 
