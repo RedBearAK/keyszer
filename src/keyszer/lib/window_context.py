@@ -1,44 +1,74 @@
 import abc
 import json
+
 from .logger import error, debug
 
 # Provider classes for window context info
+
+# Place new provider classes above the generic class at the end to
+# facilitate automatic inclusion in the list of supported environments
+# and automatic redirection from the generic provider class to the
+# matching specific provider class suitable for the environment.
+
 
 NO_CONTEXT_WAS_ERROR = {"wm_class": "", "wm_name": "", "x_error": True}
 
 
 class WindowContextProviderInterface(abc.ABC):
+    """Abstract base class for all window context provider classes"""
 
     @abc.abstractmethod
     def get_window_context(self):
-        pass
+        """
+        This method should return the current window's context as a dictionary.
 
+        The returned dictionary should contain the following keys:
 
-class WindowContextProvider(WindowContextProviderInterface):
-    """generic object to provide correct window context to KeyContext"""
-    _instance = None
-    
-    def __new__(cls, *args, **kwargs):
-        if cls._instance is None:
-            cls._instance = super(WindowContextProvider, cls).__new__(cls)
-        return cls._instance
+        - "wm_class": The class of the window.
+        - "wm_name": The name of the window.
+        - "x_error": A boolean indicating whether there was an error 
+            in obtaining the window's context.
 
-    def __init__(self, session_type, wl_desktop_env) -> None:
+        The "wm_class" and "wm_name" values are expected to be strings.
+        The "x_error" value is expected to be a boolean, which should 
+        be False if the window's context was successfully obtained, 
+        and True otherwise.
 
-        if session_type == 'x11':
-            self._provider = Xorg_WindowContext()
-        elif session_type == 'wayland':
-            if wl_desktop_env == 'gnome':
-                self._provider = Wl_GNOME_WindowContext()
-            else:
-                raise ValueError(f"Unsupported desktop environment for Wayland: {wl_desktop_env}")
-        else:
-            raise ValueError(f"Unsupported session type: {session_type}")
-        # TODO: Add more compatible providers here in future
-        # Next up: Wayland + KDE Plasma
+        Example of a successful context:
 
-    def get_window_context(self):
-        return self._provider.get_window_context()
+        {
+            "wm_class": "ExampleClass",
+            "wm_name": "ExampleName",
+            "x_error": False
+        }
+
+        In case of an error, the method should return NO_CONTEXT_WAS_ERROR, 
+        which is a predefined global variable "constant":
+
+        NO_CONTEXT_WAS_ERROR = {"wm_class": "", "wm_name": "", "x_error": True}
+
+        :returns: A dictionary containing window context information.
+        """
+
+    @classmethod
+    @abc.abstractmethod
+    def get_supported_environments(cls):
+        """
+        This method should return a list of environments that the subclass 
+        supports.
+
+        Each environment should be represented as a tuple. For example, if 
+        a subclass supports the environments 'x11' and 'wayland', this method 
+        would return [('x11',), ('wayland',)].
+
+        If an environment is specific to a certain desktop environment, the 
+        desktop environment should be included in the tuple. For example, if 
+        a subclass supports the 'wayland' environment specifically on the 
+        'gnome' desktop, this method would return [('wayland', 'gnome')].
+
+        :returns: A list of tuples, each representing an environment supported 
+        by the subclass.
+        """
 
 
 class Wl_GNOME_WindowContext(WindowContextProviderInterface):
@@ -65,7 +95,6 @@ class Wl_GNOME_WindowContext(WindowContextProviderInterface):
                                             "org.gnome.Shell.Extensions.WindowsExt")
 
         self.last_good_ext_uuid     = None
-        # global last_good_ext_uuid
         self.cycle_count            = 0
         self.ext_uuid_windowsext    = 'window-calls-extended@hseliger.eu'
         self.ext_uuid_xremap        = 'xremap@k0kubun.com'
@@ -74,6 +103,11 @@ class Wl_GNOME_WindowContext(WindowContextProviderInterface):
             self.ext_uuid_windowsext:   self.get_wl_gnome_dbus_windowsext_context,
             self.ext_uuid_xremap:       self.get_wl_gnome_dbus_xremap_context,
         }
+
+    @classmethod
+    def get_supported_environments(cls):
+        # This class supports the GNOME environment on Wayland
+        return [('wayland', 'gnome')]
 
     def get_window_context(self):
         """
@@ -117,13 +151,13 @@ class Wl_GNOME_WindowContext(WindowContextProviderInterface):
 
         # If we reach here, it means all extensions have failed
         print()
-        error(  f'############################################################################'
-                f'\nSHELL_EXT: No compatible GNOME Shell extension responding via D-Bus.')
-        error(  f'These extensions are compatible with keyszer:'
-                f'\n       {self.ext_uuid_windowsext}:'
+        error(  f'############################################################################')
+        error(  f'SHELL_EXT: No compatible GNOME Shell extension responding via D-Bus.'
+                f'\n\tThese extensions are compatible with keyszer:'
+                f'\n\t    {self.ext_uuid_windowsext}:'
                 f'\n\t\t(https://extensions.gnome.org/extension/4974/window-calls-extended/)'
-                f'\n       {self.ext_uuid_xremap}:'
-                f'\n\t\t(https://extensions.gnome.org/extension/5060/xremap/)'  )
+                f'\n\t    {self.ext_uuid_xremap}:'
+                f'\n\t\t(https://extensions.gnome.org/extension/5060/xremap/)')
         error(f'Install "Extension Manager" from Flathub to manage GNOME Shell extensions')
         error(f'############################################################################')
         print()
@@ -169,6 +203,11 @@ class Xorg_WindowContext(WindowContextProviderInterface):
         self.ConnectionClosedError  = ConnectionClosedError
         self.DisplayConnectionError = DisplayConnectionError
         self.DisplayNameError       = DisplayNameError
+
+    @classmethod
+    def get_supported_environments(cls):
+        # This class supports any desktop environment on X11
+        return [('x11', None)]
 
     def get_window_context(self):
         """
@@ -223,3 +262,47 @@ class Xorg_WindowContext(WindowContextProviderInterface):
             return None
 
         return window
+
+
+###############################################################################################
+# ALL SPECIFIC PROVIDER CLASSES MUST BE DEFINED BEFORE/ABOVE THIS GENERIC PROVIDER!!!
+# This class is responsible for making a list of the environments supported
+# by all the specific provider classes in this module, and redirecting the
+# rest of the keymapper code to the correct specific provider. 
+
+# Generic class for the rest of the code to interact with
+class WindowContextProvider(WindowContextProviderInterface):
+    """generic object to provide correct window context to KeyContext"""
+    _instance = None
+
+    # Mapping of environments to provider classes
+    environment_class_map = {
+        env: cls for cls in WindowContextProviderInterface.__subclasses__()
+        for env in cls.get_supported_environments()
+    }
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super(WindowContextProvider, cls).__new__(cls)
+        return cls._instance
+
+    def __init__(self, session_type, wl_desktop_env) -> None:
+
+        env = (session_type, wl_desktop_env)
+        if env not in self.environment_class_map:
+            raise ValueError(f"Unsupported environment: {env}")
+
+        self._provider = self.environment_class_map[env]()
+
+    def get_window_context(self):
+        return self._provider.get_window_context()
+
+    @classmethod
+    def get_supported_environments(cls):
+        # This generic class does not directly support any environments
+        return []
+
+# ALL SPECIFIC PROVIDER CLASSES MUST BE DEFINED BEFORE/ABOVE THIS GENERIC PROVIDER!!!
+# This class is responsible for making a list of the environments supported
+# by all the specific provider classes in this module, and redirecting the
+# rest of the keymapper code to the correct specific provider. 
