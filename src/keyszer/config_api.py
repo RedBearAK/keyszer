@@ -60,8 +60,10 @@ def get_all_supported_environments():
 
     # Iterate through each class
     for name, obj in all_classes:
-        # If the class is a subclass of WindowContextProviderInterface (but not the base class itself)
-        if issubclass(obj, window_context.WindowContextProviderInterface) and obj is not window_context.WindowContextProviderInterface:
+        # If the class is a subclass of WindowContextProviderInterface
+        # (but not the base class itself)
+        if (issubclass(obj, window_context.WindowContextProviderInterface) and 
+            obj is not window_context.WindowContextProviderInterface):
             # Add the environments that this provider supports to the list
             supported_environments.extend(obj.get_supported_environments())
 
@@ -78,6 +80,11 @@ def environ_api(session_type='x11', wl_desktop_env=None):
     Default session type is 'x11' for backwards compatibility
     with existing configs not using the API.
     """
+
+    # reset wl_desktop_env to None if session is X11/Xorg
+    # desktop only relevant for Wayland session
+    if session_type == 'x11':
+        wl_desktop_env = None
 
     # disregard any capitalization mistakes by user
     if isinstance(session_type, str):
