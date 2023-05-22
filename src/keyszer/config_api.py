@@ -58,12 +58,14 @@ def get_all_supported_environments():
     # Get all classes in the window context module
     all_classes = inspect.getmembers(window_context, inspect.isclass)
 
+    # shorter reference for long interface class name in 'if' condition below
+    WinCtxProvIface = window_context.WindowContextProviderInterface
+
     # Iterate through each class
     for name, obj in all_classes:
         # If the class is a subclass of WindowContextProviderInterface
         # (but not the base class itself)
-        if (issubclass(obj, window_context.WindowContextProviderInterface) and 
-            obj is not window_context.WindowContextProviderInterface):
+        if issubclass(obj, WinCtxProvIface) and obj is not WinCtxProvIface:
             # Add the environments that this provider supports to the list
             supported_environments.extend(obj.get_supported_environments())
 
@@ -81,8 +83,10 @@ def environ_api(session_type='x11', wl_desktop_env=None):
     with existing configs not using the API.
     """
 
-    # reset wl_desktop_env to None if session is X11/Xorg
-    # desktop only relevant for Wayland session
+    # IMPORTANT: Reset wl_desktop_env to `None` if session is X11/Xorg
+    # Desktop is only relevant for Wayland session type
+    # Having anything other than `None` as desktop will not match X11/Xorg provider
+    # This matches environment ('x11', None) from X11/Xorg context provider
     if session_type == 'x11':
         wl_desktop_env = None
 
