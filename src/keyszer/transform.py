@@ -15,6 +15,7 @@ from .models.key import Key
 from .models.keymap import Keymap
 from .models.keystate import Keystate
 from .models.modifier import Modifier
+from .models.modmap import Modmap
 from .output import Output
 
 _MODMAPS = None
@@ -79,7 +80,7 @@ def is_sticky(key):
     return False
 
 
-def update_pressed_states(keystate):
+def update_pressed_states(keystate: Keystate):
     # release
     if keystate.action == Action.RELEASE:
         del _key_states[keystate.inkey]
@@ -118,6 +119,7 @@ def resume_keys():
         debug("resuming keys:", [x.key for x in states])
 
     for ks in states:
+        ks: Keystate
         # spent keys that are held long enough to resume
         # no longer count as spent
         ks.spent = False
@@ -220,7 +222,7 @@ def dump_diagnostics():
 # ─── COMBO CONTEXT LOGGING ────────────────────────────────────────────────────────
 
 
-def log_combo_context(combo, ctx, keymap, _active_keymaps):
+def log_combo_context(combo, ctx: KeyContext, keymap: Keymap, _active_keymaps):
     """Log context around usage of combo"""
     import textwrap
 
@@ -251,7 +253,7 @@ _last_key = None
 
 
 # translate keycode (like xmodmap)
-def apply_modmap(keystate, context):
+def apply_modmap(keystate: Keystate, context):
     inkey = keystate.inkey
     keystate.key = inkey
     # first modmap is always the default, unconditional
@@ -261,6 +263,7 @@ def apply_modmap(keystate, context):
     # debug("conditionals", conditional_modmaps)
     if conditional_modmaps:
         for modmap in conditional_modmaps:
+            modmap: Modmap
             if inkey in modmap:
                 if modmap.conditional(context):
                     active_modmap = modmap
@@ -270,11 +273,12 @@ def apply_modmap(keystate, context):
         keystate.key = active_modmap[inkey]
 
 
-def apply_multi_modmap(keystate, context):
+def apply_multi_modmap(keystate: Keystate, context):
     active_multi_modmap = _MULTI_MODMAPS[0]
     conditional_multimaps = _MULTI_MODMAPS[1:]
     if conditional_multimaps:
         for modmap in conditional_multimaps:
+            modmap: Modmap
             if keystate.inkey in modmap:
                 if modmap.conditional(context):
                     active_multi_modmap = modmap
@@ -297,7 +301,7 @@ def find_keystate_or_new(inkey, action):
     if inkey not in _key_states:
         return Keystate(inkey=inkey, action=action)
 
-    ks = _key_states[inkey]
+    ks: Keystate = _key_states[inkey]
     ks.prior = ks.copy()
     delattr(ks.prior, "prior")
     ks.action = action
@@ -365,7 +369,7 @@ def on_event(event, device):
     on_key(ks, context)
 
 
-def on_mod_key(keystate, context):
+def on_mod_key(keystate: Keystate, context):
     hold_output = False
     should_suspend = False
 
@@ -405,7 +409,27 @@ def on_mod_key(keystate, context):
             keystate.exerted_on_output = False
 
 
-def on_key(keystate, context):
+# List of keys to forcibly "repeat" when repeat keys is disabled in DE
+repeat_allowed_keys = [
+    # arrow keys
+    Key.LEFT, Key.RIGHT, Key.UP, Key.DOWN,
+    # nav keys (PgUp/PgDn/Home/End)
+    Key.PAGE_UP, Key.PAGE_DOWN, Key.HOME, Key.END,
+    # font zoom buttons (Minus/Equal)
+    Key.MINUS, Key.EQUAL,
+
+    Key.BACKSPACE, Key.DELETE, Key.SPACE, Key.TAB, Key.ENTER,
+
+    # keypad arrow keys (when NumLock is OFF)
+    # Key.KP4, Key.KP6, Key.KP8, Key.KP2,
+    # keypad PgUp/PgDn/Home/End keys (when NumLock is OFF)
+    # Key.KP9, Key.KP3, Key.KP7, Key.KP1,
+    # keypad Delete and Enter (when NumLock is OFF)
+    # Key.KPDOT, Key.KPENTER,
+]
+
+
+def on_key(keystate: Keystate, context):
     global _last_key
 
     key, action = (keystate.key, keystate.action)
@@ -423,6 +447,12 @@ def on_key(keystate, context):
     elif keystate.is_multi and action.is_repeat and keystate.suspended:
         pass
         # do nothing
+
+    # New elif block that treats repeat events as press events for non-multi keys.
+    elif action.is_repeat and key in repeat_allowed_keys:
+        _output.send_key_action(key, Action.RELEASE)
+        _output.send_key_action(key, Action.PRESS)
+        _last_key = key
 
     # regular key releases, not modifiers (though possibly a multi-mod)
     elif action.is_released():
@@ -448,7 +478,7 @@ def on_key(keystate, context):
         _last_key = key
 
 
-def transform_key(key, action, ctx):
+def transform_key(key, action, ctx: KeyContext):
     global _active_keymaps
     is_top_level = False
 
@@ -482,6 +512,7 @@ def transform_key(key, action, ctx):
 
         held = get_pressed_states()
         for ks in held:
+            ks: Keystate
             # if we are triggering a momentary on the output we can mark ourselves
             # spent, but if the key is already asserted on the output then we cannot
             # count it as spent and must hold it so that it's release later will
@@ -508,7 +539,7 @@ def transform_key(key, action, ctx):
 
 
 # binds the first input modifier to the first output modifier
-def simple_sticky(combo, output_combo):
+def simple_sticky(combo: Combo, output_combo: Combo):
     inmods = combo.modifiers
     outmods = output_combo.modifiers
     if len(inmods) == 0 or len(outmods) == 0:
@@ -517,7 +548,7 @@ def simple_sticky(combo, output_combo):
     outkey = outmods[0].get_key()
 
     if inkey in _key_states:
-        ks = _key_states[inkey]
+        ks: Keystate = _key_states[inkey]
         if ks.exerted_on_output:
             key_in_output = any([inkey in mod.keys for mod in outmods])
             if not key_in_output:
@@ -602,13 +633,13 @@ def handle_commands(commands, key, action, ctx, input_combo=None):
             elif isinstance(command, Keymap):
                 keymap = command
                 if Trigger.IMMEDIATELY in keymap:
-                    handle_commands(keymap[Trigger.IMMEDIATELY], None, None)
+                    handle_commands(keymap[Trigger.IMMEDIATELY], None, None, ctx)
                 _active_keymaps = [keymap]
                 return False
             # to_keystrokes and unicode_keystrokes produce lists so
             # we'll just handle it recursively
             elif isinstance(command, list):
-                reset_mode = handle_commands(command, key, action)
+                reset_mode = handle_commands(command, key, action, ctx)
                 if reset_mode is False:
                     return False
             elif command is None:
