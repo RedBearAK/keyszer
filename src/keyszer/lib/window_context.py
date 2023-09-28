@@ -121,6 +121,11 @@ class WlRoots_WindowContext_pywayland(WindowContextProviderInterface):
         self.wm_class           = None
         self.wm_name            = None
 
+        # test out the context method:
+        self.get_active_wdw_ctx()
+        print(f"\t init: {self.wm_class = }")
+        print(f"\t init: {self.wm_name = }")
+
     def handle_global(self, registry, name, interface, version):
         if interface == "zwlr_foreign_toplevel_manager_v1":
             self.toplevel_manager = self.registry.bind(name, ZwlrForeignToplevelManagerV1, version)
@@ -134,6 +139,7 @@ class WlRoots_WindowContext_pywayland(WindowContextProviderInterface):
                 break
 
     def on_new_toplevel(self, toplevel_manager, toplevel):
+        print("\t on_new_toplevel() toplevel_manager:", toplevel_manager)
         print("\t on_new_toplevel() toplevel:", toplevel)
         print(f"{type(toplevel) = }")
         self.toplevel_windows.append(toplevel)
@@ -172,7 +178,8 @@ class WlRoots_WindowContext_pywayland(WindowContextProviderInterface):
 
     def get_window_context(self):
         """Return window context to KeyContext"""
-        return self.get_active_wdw_ctx
+        print(f"\t get_window_context() was called...")
+        return self.get_active_wdw_ctx()
 
 
 
