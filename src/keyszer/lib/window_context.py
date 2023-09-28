@@ -235,56 +235,56 @@ class WlRoots_WindowContext_pywayland(WindowContextProviderInterface):
 
 
 
-class Wl_sway_WindowContext(WindowContextProviderInterface):
-    """Window context provider object for Wayland+sway environments"""
+# class Wl_sway_WindowContext(WindowContextProviderInterface):
+#     """Window context provider object for Wayland+sway environments"""
 
-    @classmethod
-    def get_supported_environments(cls):
-        # This class supports the sway window manager environment on Wayland
-        return [
-            ('wayland', 'sway'),
-            ('wayland', 'swaywm'),
-        ]
+#     @classmethod
+#     def get_supported_environments(cls):
+#         # This class supports the sway window manager environment on Wayland
+#         return [
+#             ('wayland', 'sway'),
+#             ('wayland', 'swaywm'),
+#         ]
 
-    def __init__(self):
+#     def __init__(self):
 
-        # Create the connection object
-        self.cnxn_obj           = None
-        self._establish_connection()
+#         # Create the connection object
+#         self.cnxn_obj           = None
+#         self._establish_connection()
 
-        self.wm_class           = None
-        self.wm_name            = None
+#         self.wm_class           = None
+#         self.wm_name            = None
 
-    def _establish_connection(self):
-        """Establish a connection to sway IPC via i3ipc. Retry indefinitely if unsuccessful."""
-        while True:
-            try:
-                self.cnxn_obj = i3ipc.Connection(auto_reconnect=True)
-                debug(f'CTX_SWAY: Connection object created.')
-                break
-            # i3ipc.Connection() class may return generic Exception, or ConnectionError
-            except (ConnectionError, Exception) as cnxn_err:
-                error(f'ERROR: Problem connecting to sway IPC via i3ipc:\n\t{cnxn_err}')
-                time.sleep(3)
+#     def _establish_connection(self):
+#         """Establish a connection to sway IPC via i3ipc. Retry indefinitely if unsuccessful."""
+#         while True:
+#             try:
+#                 self.cnxn_obj = i3ipc.Connection(auto_reconnect=True)
+#                 debug(f'CTX_SWAY: Connection object created.')
+#                 break
+#             # i3ipc.Connection() class may return generic Exception, or ConnectionError
+#             except (ConnectionError, Exception) as cnxn_err:
+#                 error(f'ERROR: Problem connecting to sway IPC via i3ipc:\n\t{cnxn_err}')
+#                 time.sleep(3)
 
-    def get_active_wdw_ctx_sway_ipc(self):
-        """Get sway window context via i3ipc Python module methods."""
-        try:
-            tree                    = self.cnxn_obj.get_tree()
-        except ConnectionResetError as cnxn_err:
-            debug(f"IPC connection was reset (sway).\t\n{cnxn_err}")
-            return NO_CONTEXT_WAS_ERROR
-        focused_wdw             = tree.find_focused()
-        if not focused_wdw:
-            debug("No window is currently focused.")
-            return NO_CONTEXT_WAS_ERROR
-        self.wm_class           = focused_wdw.app_id or 'sway-ctx-error'
-        self.wm_name            = focused_wdw.name or 'sway-ctx-error'
-        return {"wm_class": self.wm_class, "wm_name": self.wm_name, "x_error": False}
+#     def get_active_wdw_ctx_sway_ipc(self):
+#         """Get sway window context via i3ipc Python module methods."""
+#         try:
+#             tree                    = self.cnxn_obj.get_tree()
+#         except ConnectionResetError as cnxn_err:
+#             debug(f"IPC connection was reset (sway).\t\n{cnxn_err}")
+#             return NO_CONTEXT_WAS_ERROR
+#         focused_wdw             = tree.find_focused()
+#         if not focused_wdw:
+#             debug("No window is currently focused.")
+#             return NO_CONTEXT_WAS_ERROR
+#         self.wm_class           = focused_wdw.app_id or 'sway-ctx-error'
+#         self.wm_name            = focused_wdw.name or 'sway-ctx-error'
+#         return {"wm_class": self.wm_class, "wm_name": self.wm_name, "x_error": False}
 
-    def get_window_context(self):
-        """Return window context to KeyContext"""
-        return self.get_active_wdw_ctx_sway_ipc()
+#     def get_window_context(self):
+#         """Return window context to KeyContext"""
+#         return self.get_active_wdw_ctx_sway_ipc()
 
 
 class Wl_Hyprland_WindowContext(WindowContextProviderInterface):
