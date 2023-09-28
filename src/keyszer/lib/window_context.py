@@ -102,9 +102,11 @@ class WlRoots_WindowContext_pywayland(WindowContextProviderInterface):
     def __init__(self):
         debug(f"Initializing '{self.__class__.__name__}' provider instance...")
         self.display = Display()
+        print("\t Display:", self.display)
         self.display.connect()
 
         self.registry           = self.display.get_registry() # appears generic due to redirects
+        print("\t Registry:", self.registry)
 
         self.registry.dispatcher['global']              = self.handle_global
         self.registry.dispatcher['global_remove']       = self.handle_global_remove
@@ -132,39 +134,44 @@ class WlRoots_WindowContext_pywayland(WindowContextProviderInterface):
                 break
 
     def on_new_toplevel(self, toplevel_manager, toplevel):
+        print("\t on_new_toplevel() toplevel:", toplevel)
+        print(f"{type(toplevel) = }")
         self.toplevel_windows.append(toplevel)
+        print("\t on_new_toplevel() toplevel_windows:", self.toplevel_windows)
         toplevel.dispatcher['app_id'] = self.on_app_id
         toplevel.dispatcher['title'] = self.on_title
 
     def on_app_id(self, toplevel, app_id):
+        print(f"\t on_app_id() {type(app_id) = }")
+        print(f"\t on_app_id() {app_id = }")
         toplevel.app_id = app_id
+        print(f"\t on_app_id() {type(toplevel.app_id) = }")
+        print(f"\t on_app_id() {toplevel.app_id = }")
 
     def on_title(self, toplevel, title):
+        print(f"\t on_title() {type(title) = }")
+        print(f"\t on_title() {title = }")
         toplevel.title = title
-
-    def get_active_wdw_ctx_manual(self):
-        """Manually retrieve the current focused window's class and title."""
-        if not self.toplevel_windows:
-            return NO_CONTEXT_WAS_ERROR
-
-        # Assuming the last announced toplevel is the focused one
-        focused_window = self.toplevel_windows[-1]
-        self.wm_class = getattr(focused_window, 'app_id', 'unknown')
-        self.wm_name = getattr(focused_window, 'title', 'unknown')
-        return {"wm_class": self.wm_class, "wm_name": self.wm_name, "x_error": False}
+        print(f"\t on_title() {type(toplevel.title) = }")
+        print(f"\t on_title() {toplevel.title = }")
 
     def get_active_wdw_ctx(self):
         if not self.toplevel_windows:
             return NO_CONTEXT_WAS_ERROR
         # Assuming the last announced toplevel is the focused one
         focused_window = self.toplevel_windows[-1]
+        print(f"\t get_active_wdw_ctx() {type(focused_window) = }")
+        print(f"\t get_active_wdw_ctx() {focused_window = }")
         self.wm_class = getattr(focused_window, 'app_id', 'unknown')
         self.wm_name = getattr(focused_window, 'title', 'unknown')
+        print(f"\t get_active_wdw_ctx() {type(self.wm_class) = }")
+        print(f"\t get_active_wdw_ctx() {self.wm_class = }")
+        print(f"\t get_active_wdw_ctx() {type(self.wm_name) = }")
+        print(f"\t get_active_wdw_ctx() {self.wm_name = }")
         return {"wm_class": self.wm_class, "wm_name": self.wm_name, "x_error": False}
 
     def get_window_context(self):
         """Return window context to KeyContext"""
-        # return self.get_active_wdw_ctx_manual     # use if event-driven method doesn't work
         return self.get_active_wdw_ctx
 
 
