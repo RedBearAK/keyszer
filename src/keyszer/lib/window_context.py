@@ -162,6 +162,8 @@ class WlRoots_WindowContext_pywayland(WindowContextProviderInterface):
         print(f"\t on_title() {toplevel.title = }")
 
     def get_active_wdw_ctx(self):
+        self.display.dispatch()
+        self.display.roundtrip()
         if not self.toplevel_windows:
             return NO_CONTEXT_WAS_ERROR
         # Assuming the last announced toplevel is the focused one
