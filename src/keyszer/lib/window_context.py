@@ -12,6 +12,12 @@ from subprocess import PIPE
 from i3ipc import Con
 from typing import Dict, Optional
 
+# For getting window info in more generic manner from 'wlroots' (ALPHA TESTING)
+from pywayland.client import Display
+from .wayland_protocols.wayland import WlDisplay, WlOutput, WlRegistry, wl_registry, WlSeat
+from .wayland_protocols.wlr_foreign_toplevel_management_unstable_v1 import ZwlrForeignToplevelManagerV1, ZwlrForeignToplevelHandleV1
+
+
 from .logger import error, debug
 
 # Provider classes for window context info
@@ -82,8 +88,163 @@ class WindowContextProviderInterface(abc.ABC):
         """
 
 
+class WlRoots_WindowContext_pywayland(WindowContextProviderInterface):
+    """Window context provider object for Wayland+wlroots environments"""
+
+    @classmethod
+    def get_supported_environments(cls):
+        # This class supports the wlroots compositor on Wayland via 'pywayland'
+        return [
+            ('wayland', 'wlroots'),
+            ('wayland', 'sway')     # test using this in sway
+        ]
+
+    def __init__(self):
+        debug(f"Initializing '{self.__class__.__name__}' provider instance...")
+        self.display = Display()
+        self.display.connect()
+
+        self.registry           = self.display.get_registry() # appears generic due to redirects
+
+        self.registry.dispatcher['global']              = self.handle_global
+        self.registry.dispatcher['global_remove']       = self.handle_global_remove
+
+        self.toplevel_manager   = None
+        self.toplevel_windows   = []  # To keep track of toplevel windows
+
+        # self.display.dispatcher   # I found "dispatcher: Dispatcher" here
+        self.display.dispatch()
+        self.display.roundtrip()
+
+        self.wm_class           = None
+        self.wm_name            = None
+
+    def handle_global(self, registry, name, interface, version):
+        if interface == "zwlr_foreign_toplevel_manager_v1":
+            self.toplevel_manager = self.registry.bind(name, ZwlrForeignToplevelManagerV1, version)
+            self.toplevel_manager.dispatcher['toplevel'] = self.on_new_toplevel
+
+    def handle_global_remove(self, registry, name):
+        # Remove the top-level window from the list when it's no longer present
+        for toplevel in self.toplevel_windows:
+            if toplevel.name == name:  # Assuming the toplevel has a 'name' attribute. Adjust accordingly.
+                self.toplevel_windows.remove(toplevel)
+                break
+
+    def on_new_toplevel(self, toplevel_manager, toplevel):
+        self.toplevel_windows.append(toplevel)
+        toplevel.dispatcher['app_id'] = self.on_app_id
+        toplevel.dispatcher['title'] = self.on_title
+
+    def on_app_id(self, toplevel, app_id):
+        toplevel.app_id = app_id
+
+    def on_title(self, toplevel, title):
+        toplevel.title = title
+
+    def get_active_wdw_ctx_manual(self):
+        """Manually retrieve the current focused window's class and title."""
+        if not self.toplevel_windows:
+            return NO_CONTEXT_WAS_ERROR
+
+        # Assuming the last announced toplevel is the focused one
+        focused_window = self.toplevel_windows[-1]
+        self.wm_class = getattr(focused_window, 'app_id', 'unknown')
+        self.wm_name = getattr(focused_window, 'title', 'unknown')
+        return {"wm_class": self.wm_class, "wm_name": self.wm_name, "x_error": False}
+
+    def get_active_wdw_ctx(self):
+        if not self.toplevel_windows:
+            return NO_CONTEXT_WAS_ERROR
+        # Assuming the last announced toplevel is the focused one
+        focused_window = self.toplevel_windows[-1]
+        self.wm_class = getattr(focused_window, 'app_id', 'unknown')
+        self.wm_name = getattr(focused_window, 'title', 'unknown')
+        return {"wm_class": self.wm_class, "wm_name": self.wm_name, "x_error": False}
+
+    def get_window_context(self):
+        """Return window context to KeyContext"""
+        # return self.get_active_wdw_ctx_manual     # use if event-driven method doesn't work
+        return self.get_active_wdw_ctx
+
+
+
+# from wlroots.wlr_types import ForeignToplevelManagerV1
+# from pywayland.client import Display
+
+
+# class WlRoots_WindowContext_pywlroots(WindowContextProviderInterface):
+#     """Window context provider object for Wayland+wlroots environments using the wlroots library."""
+
+#     @classmethod
+#     def get_supported_environments(cls):
+#         # This class supports the wlroots compositor on Wayland via 'pywlroots'
+#         return [
+#             ('wayland', 'wlroots'),
+#             ('wayland', 'sway')     # test using this in sway
+#         ]
+
+#     def __init__(self):
+#         debug(f"Initializing '{self.__class__.__name__}' provider instance...")
+        
+#         # Initialize Wayland Display
+#         self.display = Display()
+        
+#         # Create an instance of ForeignToplevelManagerV1
+#         self.toplevel_manager = ForeignToplevelManagerV1.create(self.display)
+        
+#         # Placeholder for toplevel windows
+#         self.toplevel_windows = []
+        
+#         # Setup event handlers (just placeholders for now)
+#         self.setup_event_handlers()
+
+#     def setup_event_handlers(self):
+#         """Set up event handlers for the toplevel manager and windows."""
+#         # Listen for new toplevels
+#         self.toplevel_manager.on('toplevel', self.on_new_toplevel)
+
+#         # For existing toplevel windows, set up their event handlers
+#         for toplevel in self.toplevel_windows:
+#             self._setup_toplevel_event_handlers(toplevel)
+
+#     def _setup_toplevel_event_handlers(self, toplevel):
+#         """Set up event handlers for a single toplevel window."""
+#         toplevel.on('title', self.on_title_change)
+#         toplevel.on('app_id', self.on_app_id_change)
+
+#     def on_new_toplevel(self, toplevel):
+#         """Handle when a new toplevel window is announced."""
+#         pass
+
+#     def on_app_id_change(self, toplevel, app_id):
+#         """Handle when the app_id of a toplevel window changes."""
+#         pass
+
+#     def on_title_change(self, toplevel, title):
+#         """Handle when the title of a toplevel window changes."""
+#         pass
+
+#     def get_active_wdw_ctx(self):
+#         """Retrieve the current focused window's class and title."""
+#         pass
+
+#     def get_window_context(self):
+#         """Return window context to KeyContext."""
+#         return self.get_active_wdw_ctx
+
+
+
 class Wl_sway_WindowContext(WindowContextProviderInterface):
     """Window context provider object for Wayland+sway environments"""
+
+    @classmethod
+    def get_supported_environments(cls):
+        # This class supports the sway window manager environment on Wayland
+        return [
+            ('wayland', 'sway'),
+            ('wayland', 'swaywm'),
+        ]
 
     def __init__(self):
 
@@ -93,14 +254,6 @@ class Wl_sway_WindowContext(WindowContextProviderInterface):
 
         self.wm_class           = None
         self.wm_name            = None
-
-    @classmethod
-    def get_supported_environments(cls):
-        # This class supports the sway window manager environment on Wayland
-        return [
-            ('wayland', 'sway'),
-            ('wayland', 'swaywm'),
-        ]
 
     def _establish_connection(self):
         """Establish a connection to sway IPC via i3ipc. Retry indefinitely if unsuccessful."""
@@ -134,9 +287,16 @@ class Wl_sway_WindowContext(WindowContextProviderInterface):
         return self.get_active_wdw_ctx_sway_ipc()
 
 
-
 class Wl_Hyprland_WindowContext(WindowContextProviderInterface):
     """Window context provider object for Wayland+Hyprland environments"""
+
+    @classmethod
+    def get_supported_environments(cls):
+        # This class supports the Hyprland window manager environment on Wayland
+        return [
+            ('wayland', 'hyprland'),
+            ('wayland', 'hypr')
+        ]
 
     def __init__(self):
         from hyprpy import Hyprland
@@ -147,14 +307,6 @@ class Wl_Hyprland_WindowContext(WindowContextProviderInterface):
         self.hyprctl_cmd    = shutil.which('hyprctl')
         self.wm_class       = None
         self.wm_name        = None
-
-    @classmethod
-    def get_supported_environments(cls):
-        # This class supports the Hyprland window manager environment on Wayland
-        return [
-            ('wayland', 'hyprland'),
-            ('wayland', 'hypr')
-        ]
 
     def get_active_wdw_ctx_hyprpy(self):
         try:
@@ -234,6 +386,14 @@ class Wl_Hyprland_WindowContext(WindowContextProviderInterface):
 class Wl_KDE_Plasma_WindowContext(WindowContextProviderInterface):
     """Window context provider object for Wayland+KDE_Plasma environments"""
 
+    @classmethod
+    def get_supported_environments(cls):
+        # This class supports the KDE Plasma environment on Wayland
+        return [
+            ('wayland', 'kde'),
+            ('wayland', 'plasma')
+        ]
+
     def __init__(self):
         # import time
         # import dbus
@@ -259,14 +419,6 @@ class Wl_KDE_Plasma_WindowContext(WindowContextProviderInterface):
             except self.DBusException as dbus_error:
                 error(f'Error getting Toshy KDE D-Bus service interface.\n\t{dbus_error}')
             time.sleep(3)
-
-    @classmethod
-    def get_supported_environments(cls):
-        # This class supports the KDE Plasma environment on Wayland
-        return [
-            ('wayland', 'kde'),
-            ('wayland', 'plasma')
-        ]
 
     def get_window_context(self):
         """
@@ -311,6 +463,11 @@ class Wl_KDE_Plasma_WindowContext(WindowContextProviderInterface):
 class Wl_GNOME_WindowContext(WindowContextProviderInterface):
     """Window context provider object for Wayland+GNOME environments"""
 
+    @classmethod
+    def get_supported_environments(cls):
+        # This class supports the GNOME environment on Wayland
+        return [('wayland', 'gnome')]
+
     def __init__(self):
         # import dbus
         from dbus.exceptions import DBusException
@@ -345,11 +502,6 @@ class Wl_GNOME_WindowContext(WindowContextProviderInterface):
             self.ext_uuid_windowsext:   self.get_wl_gnome_dbus_windowsext_context,
             self.ext_uuid_focused_wdw:  self.get_wl_gnome_dbus_focused_wdw_context,
         }
-
-    @classmethod
-    def get_supported_environments(cls):
-        # This class supports the GNOME environment on Wayland
-        return [('wayland', 'gnome')]
 
     def get_window_context(self):
         """
@@ -461,6 +613,11 @@ class Wl_GNOME_WindowContext(WindowContextProviderInterface):
 class Xorg_WindowContext(WindowContextProviderInterface):
     """Window context provider object for X11/Xorg environments"""
 
+    @classmethod
+    def get_supported_environments(cls):
+        # This class supports any desktop environment on X11
+        return [('x11', None)]
+
     def __init__(self):
         self._display = None
 
@@ -479,11 +636,6 @@ class Xorg_WindowContext(WindowContextProviderInterface):
         self.DisplayConnectionError = DisplayConnectionError
         self.DisplayNameError       = DisplayNameError
         self.BadWindow              = BadWindow
-
-    @classmethod
-    def get_supported_environments(cls):
-        # This class supports any desktop environment on X11
-        return [('x11', None)]
 
     def get_window_context(self):
         """

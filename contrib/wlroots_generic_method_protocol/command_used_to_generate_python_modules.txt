@@ -1,0 +1,2 @@
+python -m pywayland.scanner -i wayland.xml wlr-foreign-toplevel-management-unstable-v1.xml -o .
+
